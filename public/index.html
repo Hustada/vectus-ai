@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vectus AI | The Victor Collective</title>
+    <style>
+    /* Typing indicator */
+    .typing-indicator {
+        margin-left: 0;
+        margin-right: auto;
+        display: none;
+        background-color: #f0f0f0;
+        padding: 10px;
+        border-radius: 10px;
+        margin: 10px;
+        width: fit-content;
+    }
+
+    .typing-indicator span {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background-color: #90949c;
+        border-radius: 50%;
+        margin-right: 5px;
+        animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typing {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+    }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+        .chat-container { 
+            max-width: 600px; 
+            margin: 20px auto; 
+            padding: 20px; 
+            box-shadow: 0 0 20px rgba(255,0,0,0.1);
+            border-radius: 8px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+        }
+        .message { 
+            padding: 12px 16px; 
+            margin: 8px 0; 
+            border-radius: 8px; 
+            line-height: 1.4;
+            max-width: 85%;
+        }
+        .user { 
+            background: #3a3a3a; 
+            margin-left: auto; 
+            color: #ffffff;
+        }
+        .bot { 
+            background: #2d2d2d; 
+            margin-right: auto;
+            color: #ff3333;
+        }
+        .bot.qualified {
+            background: #2d2d2d;
+            color: #ff4444;
+        }
+        .error { 
+            background: #ffebee; 
+            color: #c62828; 
+        }
+        .input-container { 
+            display: flex; 
+            gap: 10px; 
+            margin-top: 20px; 
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        #messageInput { 
+            flex-grow: 1; 
+            padding: 12px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        #messageInput:focus {
+            outline: none;
+            border-color: #2196f3;
+            box-shadow: 0 0 0 2px rgba(33,150,243,0.1);
+        }
+        button { 
+            padding: 12px 20px; 
+            background: #ff3333; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        button:hover {
+            background: #cc0000;
+            box-shadow: 0 0 10px rgba(255,0,0,0.3);
+        }
+        button:disabled { 
+            background: #bdbdbd; 
+            cursor: not-allowed;
+        }
+        .loading { 
+            opacity: 0.5; 
+        }
+        #chatLog {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h2>Vectus AI</h2>
+        <div id="chatLog"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Enter your message..." onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()" id="sendButton">Send</button>
+        </div>
+    </div>
+    <script>
+        function showTypingIndicator() {
+            const typingIndicator = document.createElement('div');
+            typingIndicator.id = 'typing-indicator';
+            typingIndicator.className = 'typing-indicator';
+            typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+            typingIndicator.style.display = 'block';
+            document.getElementById('chatLog').appendChild(typingIndicator);
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typing-indicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const button = document.getElementById('sendButton');
+            const chatLog = document.getElementById('chatLog');
+            
+            if (!input.value.trim()) return;
+            
+            // Disable input while processing
+            input.disabled = true;
+            button.disabled = true;
+            
+            try {
+                // Display user message
+                chatLog.innerHTML += `<div class="message user">${escapeHtml(input.value)}</div>`;
+                chatLog.scrollTop = chatLog.scrollHeight;
+                
+                // Get AI response
+                // Show typing indicator before making the request
+            showTypingIndicator();
+
+            const response = await fetch('/api/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: input.value })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    chatLog.innerHTML += `<div class="message bot error">Error: ${escapeHtml(data.error)}</div>`;
+                } else {
+                    const botMessage = document.createElement('div');
+                botMessage.className = `message bot ${data.metadata.qualified ? 'qualified' : 'unqualified'}`;
+                botMessage.textContent = data.response;
+                // Hide typing indicator before showing the message
+                hideTypingIndicator();
+                chatLog.appendChild(botMessage);
+                chatLog.scrollTop = chatLog.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                chatLog.innerHTML += `<div class="message bot error">Sorry, something went wrong. Please try again.</div>`;
+            } finally {
+                input.value = '';
+                input.disabled = false;
+                button.disabled = false;
+                input.focus();
+                chatLog.scrollTop = chatLog.scrollHeight;
+            }
+        }
+        
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
