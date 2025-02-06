@@ -132,7 +132,6 @@ class AIQualifier {
               metadata: { appointmentId, showOptions: true }
             };
           }
-          }
           // If they didn't provide a time, repeat the time options
           return {
             score: 8,
@@ -389,7 +388,26 @@ app.post('/api/message', async (req, res) => {
       result = ai.processMessage(message, lastInteraction);
     }
     
-    // Don't auto-terminate, let the user explicitly end the conversation
+    // Handle explicit end signal
+    if (message === '__END__') {
+      console.log('Explicit end signal received');
+      result = {
+        response: 'INITIATING SHUTDOWN SEQUENCE...',
+        qualified: true,
+        nextStep: 'end',
+        score: 10,
+        metadata: { terminate: true }
+      };
+    } else if (message === 'restart') {
+      console.log('Restarting chat');
+      result = {
+        response: 'VECTUS AI REACTIVATED. HOW MAY I ASSIST YOU?',
+        qualified: true,
+        nextStep: 'initial',
+        score: 10,
+        metadata: { restart: true }
+      };
+    }
 
     // Log interaction
     crm.logInteraction(phone, message, result);
@@ -398,6 +416,7 @@ app.post('/api/message', async (req, res) => {
     res.json({
       response: result.response,
       metadata: {
+        ...result.metadata,
         qualified: result.qualified,
         nextStep: result.nextStep,
         score: result.score
