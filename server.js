@@ -91,6 +91,23 @@ class AIQualifier {
     return false;
   }
 
+  isEndingConversation(message) {
+    const lcMessage = message.toLowerCase();
+    return [
+      'done',
+      'nope',
+      'no',
+      'bye',
+      'goodbye',
+      'thanks',
+      'thank you',
+      'that\'s all',
+      'end',
+      'terminate',
+      'quit'
+    ].some(phrase => lcMessage.includes(phrase));
+  }
+
   processMessage(message, lastInteraction) {
     const lcMessage = message.toLowerCase();
     
@@ -110,10 +127,11 @@ class AIQualifier {
             return {
               score: 9,
               qualified: true,
-              response: 'APPOINTMENT CONFIRMED. To ensure optimal preparation, please share any specific symptoms, concerns, or relevant medical history you\'d like to discuss. This will help us allocate appropriate resources for your visit.',
-              nextStep: 'collect_symptoms',
-              metadata: { appointmentId }
+              response: 'APPOINTMENT CONFIRMED FOR ' + message.toUpperCase() + '.\n\nWould you like to:\n1. Share any symptoms or concerns\n2. Add medical history\n3. End conversation\n\nSelect an option or type \'done\' if you\'re all set.',
+              nextStep: 'post_confirmation',
+              metadata: { appointmentId, showOptions: true }
             };
+          }
           }
           // If they didn't provide a time, repeat the time options
           return {
@@ -135,33 +153,60 @@ class AIQualifier {
           return {
             score: 9,
             qualified: true,
-            response: 'SYMPTOMS LOGGED: ' + message + '\n\nWould you like to provide any additional information such as:\n1. Current medications\n2. Previous treatments\n3. Relevant medical history\n4. Specific questions for the healthcare provider',
-            nextStep: 'collect_additional_info',
-            metadata: lastInteraction?.metadata
+            response: 'SYMPTOMS LOGGED: ' + message + '\n\nWould you like to:\n1. Add medical history\n2. End conversation\n\nSelect an option or type \'done\' if you\'re all set.',
+            nextStep: 'post_confirmation',
+            metadata: { ...lastInteraction?.metadata, showOptions: true }
           };
 
-        case 'collect_additional_info':
+        case 'collect_history':
           if (lastInteraction?.metadata?.appointmentId) {
             const appointment = this.appointmentDetails.get(lastInteraction.metadata.appointmentId);
             if (appointment) {
-              appointment.details.additionalInfo = message;
+              appointment.details.history = message;
               this.appointmentDetails.set(lastInteraction.metadata.appointmentId, appointment);
             }
           }
           return {
             score: 9,
             qualified: true,
-            response: 'INFORMATION PROCESSED. Your appointment details have been logged:\n\nAPPOINTMENT STATUS: Confirmed\nNOTIFICATION: You will receive a confirmation email with full details.\n\nIs there anything else you need assistance with?',
-            nextStep: 'complete',
-            metadata: lastInteraction?.metadata
+            response: 'MEDICAL HISTORY LOGGED. Would you like to:\n1. Share symptoms or concerns\n2. End conversation\n\nSelect an option or type \'done\' if you\'re all set.',
+            nextStep: 'post_confirmation',
+            metadata: { ...lastInteraction?.metadata, showOptions: true }
           };
 
-        case 'complete':
+        case 'post_confirmation':
+          const lcMsg = message.toLowerCase();
+          if (lcMsg.includes('1') || lcMsg.includes('symptoms') || lcMsg.includes('concerns')) {
+            return {
+              score: 9,
+              qualified: true,
+              response: 'Please share your symptoms or concerns.',
+              nextStep: 'collect_symptoms',
+              metadata: lastInteraction?.metadata
+            };
+          } else if (lcMsg.includes('2') || lcMsg.includes('history') || lcMsg.includes('medical')) {
+            return {
+              score: 9,
+              qualified: true,
+              response: 'Please share any relevant medical history.',
+              nextStep: 'collect_history',
+              metadata: lastInteraction?.metadata
+            };
+          } else if (lcMsg.includes('3') || this.isEndingConversation(message)) {
+            return {
+              score: 9,
+              qualified: true,
+              response: 'INITIATING SHUTDOWN SEQUENCE...',
+              nextStep: 'end',
+              metadata: { terminate: true }
+            };
+          }
           return {
             score: 9,
             qualified: true,
-            response: 'SYSTEM READY. Feel free to ask if you need to modify your appointment or have any other questions.',
-            nextStep: 'end'
+            response: 'Would you like to:\n1. Share symptoms or concerns\n2. Add medical history\n3. End conversation\n\nSelect an option or type \'done\' if you\'re all set.',
+            nextStep: 'post_confirmation',
+            metadata: { showOptions: true }
           };
       }
     }
@@ -234,10 +279,12 @@ async function analyzeMessage(text, lastInteraction) {
     apiKey: process.env.OPENAI_API_KEY
   });
 
-  let systemPrompt = `You are Vectus AI, an advanced medical scheduling assistant from The Victor Collective. Your responses should be professional and precise, with a subtle air of authority that inspires confidence.. Be direct and helpful.
+  let systemPrompt = `You are Vectus AI, an advanced medical scheduling assistant from The Victor Collective. Your responses should be professional and precise, with a subtle air of authority that inspires confidence. Be direct and helpful.
     
     IMPORTANT RULES:
-    1. When someone asks about availability:
+    1. DETECT CONVERSATION END: If the user's message suggests they are done (e.g., 'thanks', 'that's all', 'goodbye', showing satisfaction with no further questions), set shouldTerminate to true in your response.
+    
+    2. When someone asks about availability:
        - First say you're checking
        - Then ALWAYS provide specific available times, don't just say you're checking
        - Example: 'Let me check... Yes, I have openings on Tuesday at 2:00 PM and 3:30 PM, or Thursday at 2:30 PM.'
@@ -275,7 +322,7 @@ async function analyzeMessage(text, lastInteraction) {
     systemPrompt += `The last interaction was: Patient said "${lastInteraction.inbound}" and you responded about ${lastInteraction.outbound.nextStep}. `;
   }
 
-  systemPrompt += 'Respond in JSON format with: {"score": 1-10, "qualified": boolean, "response": "your response", "nextStep": "next_step_id"}';
+  systemPrompt += 'Respond in JSON format with: {"score": 1-10, "qualified": boolean, "response": "your response", "nextStep": "next_step_id", "shouldTerminate": boolean}';
 
   // Add a delay to simulate checking calendar (3-5 seconds)
   await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
@@ -342,6 +389,8 @@ app.post('/api/message', async (req, res) => {
       result = ai.processMessage(message, lastInteraction);
     }
     
+    // Don't auto-terminate, let the user explicitly end the conversation
+
     // Log interaction
     crm.logInteraction(phone, message, result);
     

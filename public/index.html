@@ -3,6 +3,67 @@
 <head>
     <title>Vectus AI | The Victor Collective</title>
     <style>
+    /* Terminator shutdown effect */
+    @keyframes shutdown {
+        0% { 
+            opacity: 1;
+            text-shadow: 0 0 10px #ff0000;
+            color: #ff0000;
+        }
+        40% {
+            opacity: 1;
+            text-shadow: 0 0 20px #ff0000;
+            color: #ff3333;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.8;
+            text-shadow: 0 0 30px #ff0000;
+            color: #ff6666;
+            transform: scale(0.98);
+        }
+        60% {
+            opacity: 0.6;
+            text-shadow: 0 0 40px #ff0000;
+            color: #ff9999;
+            transform: scale(0.95);
+        }
+        70% {
+            opacity: 0.4;
+            text-shadow: 0 0 50px #ff0000;
+            color: #ffcccc;
+            transform: scale(0.92);
+        }
+        100% { 
+            opacity: 0;
+            text-shadow: 0 0 80px #ff0000;
+            color: #ffffff;
+            transform: scale(0.9);
+        }
+    }
+
+    .shutdown-effect {
+        animation: shutdown 3s forwards;
+    }
+
+    .chat-container.shutting-down::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: radial-gradient(circle at center, rgba(255,0,0,0.2) 0%, rgba(0,0,0,1) 100%);
+        pointer-events: none;
+        opacity: 0;
+        animation: container-shutdown 3s forwards;
+    }
+
+    @keyframes container-shutdown {
+        0% { opacity: 0; }
+        40% { opacity: 0.4; }
+        100% { opacity: 1; }
+    }
     /* Sci-fi processing indicator */
     .typing-indicator {
         margin-left: 0;
@@ -151,6 +212,41 @@
             background: #bdbdbd; 
             cursor: not-allowed;
         }
+
+        .option-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .option-button {
+            background: #2d2d2d;
+            color: #ff3333;
+            border: 1px solid #ff3333;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .option-button:hover {
+            background: #ff3333;
+            color: #ffffff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.3);
+        }
+
+        .end-button {
+            background: #3d0000;
+            color: #ff3333;
+            border: 1px solid #ff3333;
+        }
+
+        .end-button:hover {
+            background: #ff0000;
+            color: #ffffff;
+            box-shadow: 0 0 20px rgba(255,0,0,0.5);
+        }
         .loading { 
             opacity: 0.5; 
         }
@@ -219,12 +315,56 @@
                     chatLog.innerHTML += `<div class="message bot error">Error: ${escapeHtml(data.error)}</div>`;
                 } else {
                     const botMessage = document.createElement('div');
-                botMessage.className = `message bot ${data.metadata.qualified ? 'qualified' : 'unqualified'}`;
-                botMessage.textContent = data.response;
-                // Hide typing indicator before showing the message
-                hideTypingIndicator();
-                chatLog.appendChild(botMessage);
-                chatLog.scrollTop = chatLog.scrollHeight;
+                    botMessage.className = `message bot ${data.metadata.qualified ? 'qualified' : 'unqualified'}`;
+                    botMessage.textContent = data.response;
+                    
+                    // Hide typing indicator before showing the message
+                    hideTypingIndicator();
+                    chatLog.appendChild(botMessage);
+                    chatLog.scrollTop = chatLog.scrollHeight;
+
+                    // Add option buttons if metadata indicates
+                    if (data.metadata.showOptions) {
+                        const optionsDiv = document.createElement('div');
+                        optionsDiv.className = 'option-buttons';
+                        
+                        // Create buttons based on the response content
+                        const options = data.response.match(/\d\..*$/gm);
+                        if (options) {
+                            options.forEach(option => {
+                                const text = option.replace(/^\d\.\s*/, '').trim();
+                                const btn = document.createElement('button');
+                                btn.className = text.toLowerCase().includes('end') ? 'option-button end-button' : 'option-button';
+                                btn.textContent = text;
+                                btn.onclick = () => {
+                                    if (text.toLowerCase().includes('end')) {
+                                        // Trigger shutdown sequence
+                                        botMessage.classList.add('shutdown-effect');
+                                        document.querySelector('.chat-container').classList.add('shutting-down');
+                                        input.disabled = true;
+                                        button.disabled = true;
+                                        optionsDiv.style.display = 'none';
+                                        
+                                        const shutdownMsg = document.createElement('div');
+                                        shutdownMsg.className = 'message bot shutdown-effect';
+                                        shutdownMsg.textContent = 'INITIATING SHUTDOWN SEQUENCE...';
+                                        chatLog.appendChild(shutdownMsg);
+                                        
+                                        setTimeout(() => {
+                                            document.querySelector('.chat-container').style.display = 'none';
+                                        }, 3000);
+                                    } else {
+                                        // Handle normal option selection
+                                        input.value = text;
+                                        sendMessage();
+                                        optionsDiv.remove();
+                                    }
+                                };
+                                optionsDiv.appendChild(btn);
+                            });
+                            botMessage.appendChild(optionsDiv);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Error:', error);
