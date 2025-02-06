@@ -55,10 +55,12 @@ class AIQualifier {
     };
     
     this.checkingPhrases = [
-      'Let me check our availability...',
-      'I\'m looking at the schedule...',
-      'Checking available slots...'
+      'SCANNING TEMPORAL DATABASE...',
+      'ACCESSING QUANTUM CALENDAR...',
+      'CALCULATING CHRONOLOGICAL VECTORS...'
     ];
+    
+    this.appointmentDetails = new Map();
   }
 
   getAvailabilityForDays(days) {
@@ -99,12 +101,18 @@ class AIQualifier {
       switch (lastStep) {
         case 'schedule_call':
           if (this.isTimeResponse(message)) {
+            const appointmentId = Date.now().toString();
+            this.appointmentDetails.set(appointmentId, {
+              time: message,
+              status: 'confirmed',
+              details: {}
+            });
             return {
               score: 9,
               qualified: true,
-              response: 'Great! I\'ve scheduled your appointment. ' +
-                       'Could you tell me what symptoms or concerns you\'d like to discuss during the appointment?',
-              nextStep: 'collect_symptoms'
+              response: 'APPOINTMENT CONFIRMED. To ensure optimal preparation, please share any specific symptoms, concerns, or relevant medical history you\'d like to discuss. This will help us allocate appropriate resources for your visit.',
+              nextStep: 'collect_symptoms',
+              metadata: { appointmentId }
             };
           }
           // If they didn't provide a time, repeat the time options
@@ -117,20 +125,42 @@ class AIQualifier {
           };
 
         case 'collect_symptoms':
+          if (lastInteraction?.metadata?.appointmentId) {
+            const appointment = this.appointmentDetails.get(lastInteraction.metadata.appointmentId);
+            if (appointment) {
+              appointment.details.symptoms = message;
+              this.appointmentDetails.set(lastInteraction.metadata.appointmentId, appointment);
+            }
+          }
           return {
             score: 9,
             qualified: true,
-            response: 'Thank you for sharing that. I\'ve noted your concerns about ' + message + '. ' +
-                     'You\'ll receive a confirmation email shortly with appointment details. ' +
-                     'Is there anything else you\'d like me to know before the appointment?',
-            nextStep: 'complete'
+            response: 'SYMPTOMS LOGGED: ' + message + '\n\nWould you like to provide any additional information such as:\n1. Current medications\n2. Previous treatments\n3. Relevant medical history\n4. Specific questions for the healthcare provider',
+            nextStep: 'collect_additional_info',
+            metadata: lastInteraction?.metadata
+          };
+
+        case 'collect_additional_info':
+          if (lastInteraction?.metadata?.appointmentId) {
+            const appointment = this.appointmentDetails.get(lastInteraction.metadata.appointmentId);
+            if (appointment) {
+              appointment.details.additionalInfo = message;
+              this.appointmentDetails.set(lastInteraction.metadata.appointmentId, appointment);
+            }
+          }
+          return {
+            score: 9,
+            qualified: true,
+            response: 'INFORMATION PROCESSED. Your appointment details have been logged:\n\nAPPOINTMENT STATUS: Confirmed\nNOTIFICATION: You will receive a confirmation email with full details.\n\nIs there anything else you need assistance with?',
+            nextStep: 'complete',
+            metadata: lastInteraction?.metadata
           };
 
         case 'complete':
           return {
             score: 9,
             qualified: true,
-            response: 'Perfect! Everything is set for your appointment. Looking forward to helping you!',
+            response: 'SYSTEM READY. Feel free to ask if you need to modify your appointment or have any other questions.',
             nextStep: 'end'
           };
       }
